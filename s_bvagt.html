@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <title>Søndag B Vagter | København</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
+
+    .legend, .filter-buttons {
+      position: absolute;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5em;
+    }
+
+    .legend { bottom: 10px; left: 10px; z-index: 1001; }
+	
+    .legend span { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 50%; }
+
+    .filter-buttons {
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+    }
+
+    .filter-buttons button {
+      display: block;
+      margin: 4px 0;
+      padding: 6px 10px;
+      width: 130px;
+      cursor: pointer;
+      background-color: #ccc;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+
+    .filter-buttons button.active {
+      background-color: #28a745; /* grøn for aktiv */
+    }
+
+    .filter-buttons hr {
+      margin: 8px 0;
+      border: 0;
+      border-top: 1px solid #999;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="filter-buttons">
+    <!-- Toggle for rundering -->
+    <button onclick="toggleRundering(0, this)">Indvendige</button>
+    <button onclick="toggleRundering(1, this)">Udvendige</button>
+    <button onclick="toggleRundering(2, this)">Beggedele</button>
+    <hr>
+    <!-- Toggle for tidssektioner -->
+    <button onclick="toggleBSection('b_1', this)">Aften</button>
+    <button onclick="toggleBSection('b_2', this)">Natten</button>
+    <button onclick="toggleBSection('b_3', this)">Morgen</button>
+  </div>
+
+  <div class="legend">
+    <div><span style="background: blue"></span> B1-vagt (Indvendig)</div>
+    <div><span style="background: deepskyblue"></span> B1-vagt (Udvendig)</div>
+    <div><span style="background: dodgerblue"></span> B1-vagt (Both)</div>
+    <div><span style="background: red"></span> B2-vagt (Indvendig)</div>
+    <div><span style="background: crimson"></span> B2-vagt (Udvendig)</div>
+    <div><span style="background: orangered"></span> B2-vagt (Both)</div>
+    <div><span style="background: green"></span> B3-vagt (Indvendig)</div>
+    <div><span style="background: forestgreen"></span> B3-vagt (Udvendig)</div>
+    <div><span style="background: limegreen"></span> B3-vagt (Both)</div>
+  </div>
+
+  <script>
+    // ==================== Kort setup ====================
+    const map = L.map('map', {
+      minZoom: 11,
+      maxZoom: 17,
+      maxBounds: [
+        [55.55, 12.30],
+        [55.78, 12.75]
+      ],
+      maxBoundsViscosity: 1.0
+    }).setView([55.68, 12.54], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // ==================== Farver for rundering ====================
+    const runderingFarver = {
+      B1: {0: "blue", 1: "deepskyblue", 2: "dodgerblue"},
+      B2: {0: "red", 1: "crimson", 2: "orangered"},
+      B3: {0: "green", 1: "forestgreen", 2: "limegreen"}
+    };
+
+    // ==================== Hardcoded vagterData ====================
+    const vagterData = {
+      "B1":[
+        { "adresse":"Mimersgade 39-41", "koordinater":[55.69859730379575,12.548710252128327], "tid":"19:00–23:00", "rundering":[0,1], "bemærkning":"Indvendig" },
+        { "adresse":"Vanløse Kulturhus", "koordinater":[55.6865497789302, 12.492283243547995], "tid":"20:00–22:00", "rundering":[1,0], "bemærkning":"Udvendigt" },
+        { "adresse":"Kettegårds Allé 69", "koordinater":[55.646190967345284,12.463575713322166], "tid":"22:00–01:00", "rundering":[1,0], "bemærkning":"Yderdør" },
+        { "adresse":"Rådhuset", "koordinater":[55.67497292650145,12.571349195828784], "tid":"23:00–02:00", "rundering":[0,1], "bemærkning":"Indvendigt" },
+        { "adresse":"Njalasgade 171", "koordinater":[55.66373816513481,12.591369419326647], "tid":"02:00–04:00", "rundering":[2,0], "bemærkning":"Ind- og udvendig" },
+        { "adresse":"Sundbyvestervej 97A", "koordinater":[55.64564336821075,12.600146300143761], "tid":"03:00–05:00", "rundering":[2,0], "bemærkning":"Rundering + wc 1x/uge" },
+        { "adresse":"Prinsessegade 74-80", "koordinater":[55.67559865025522,12.600400760838724], "tid":"04:00–06:00", "rundering":[1,0], "bemærkning":"Yderdør sommerhalvår" }
+      ],
+      "B2":[
+        { "adresse":"HNG", "koordinater":[55.67925295873096,12.562621536687619], "tid":"19:00–23:00", "rundering":[0,1], "bemærkning":"Indvendigt" },
+        { "adresse":"Frederiksgård Skole", "koordinater":[55.69622361570898,12.538780784244969], "tid":"19:00–23:00", "rundering":[0,0], "bemærkning":"Første tur" },
+        { "adresse":"Helsingborggade 16", "koordinater":[55.71520611939022,12.570692866392736], "tid":"21:00–00:00", "rundering":[0,0], "bemærkning":"Indvendig" },
+        { "adresse":"Frederiksgård Skole", "koordinater":[55.69609886452812,12.539336798903031], "tid":"23:00–02:00", "rundering":[0,0], "bemærkning":"Anden tur" },
+        { "adresse":"Rådhuset", "koordinater":[55.674751787159515,12.570987050967942], "tid":"00:00–02:00", "rundering":[0,1], "bemærkning":"Indvendig" },
+        { "adresse":"Herbergsvej 8", "koordinater":[55.69868565242167, 12.504830505238829], "tid":"02:00–06:00", "rundering":[1,0], "bemærkning":"Yderdør" },
+        { "adresse":"Emdrupvej 72", "koordinater":[55.722992450436315,12.54201297950504], "tid":"02:00–06:00", "rundering":[1,1], "bemærkning":"Yderdør" },
+        { "adresse":"Baldersgade 24", "koordinater":[55.699682675562514,12.545551556127048], "tid":"05:00", "rundering":[1,0], "bemærkning":"Yderdør" }
+      ],
+      "B3":[
+        { "adresse":"Yderdør Rådhuset", "koordinater":[55.675690466403545,12.569488133621334], "tid":"19:00–19:30", "rundering":[1,1], "bemærkning":"Nøgleboks" },
+        { "adresse":"Yderdør V.V. 82 + Port", "koordinater":[55.67459479959544,12.572191030484584], "tid":"21:00", "rundering":[0,1], "bemærkning":"Vester Voldgade siden" },
+        { "adresse":"Rådhuset", "koordinater":[55.67500613720165,12.571206283504319], "tid":"01:30", "rundering":[1,1], "bemærkning":"Nøgleboks" },
+        { "adresse":"Yderdør V.V. 82 + Port", "koordinater":[55.67459479959544,12.572191030484584], "tid":"03:00", "rundering":[0,0], "bemærkning":"Slukke og låse" },
+        { "adresse":"Yderdør Rådhuset", "koordinater":[55.675690466403545,12.569488133621334], "tid":"05:00", "rundering":[1,1], "bemærkning":"Nøgleboks" },
+        { "adresse":"Stormgade 18", "koordinater":[55.67440520941629,12.57250579081794], "tid":"05:30", "rundering":[0,0], "bemærkning":"Frakoble alarm" },
+        { "adresse":"Stormgade 20", "koordinater":[55.673862594269934,12.5722711356852], "tid":"06:00", "rundering":[0,0], "bemærkning":"Åbne 3 døre" }
+      ]
+    };
+
+    // ==================== Opret markers ====================
+    const bounds = L.latLngBounds();
+    const markers = [];
+    const bMarkers = { b_1: [], b_2: [], b_3: [] };
+
+    const b_1_times = ["19:00–23:00","19:00–19:30","20:00–22:00","21:00","21:00–00:00","22:00–01:00"];
+    const b_2_times = ["23:00–02:00","00:00–02:00","01:30"];
+    const b_3_times = ["02:00–06:00","03:00–05:00","04:00–06:00","05:00","05:30","06:00"];
+
+    for (const [shift, locations] of Object.entries(vagterData)) {
+      locations.forEach(loc => {
+        const runderingType = loc.rundering[0];
+        const markerColor = runderingFarver[shift][runderingType];
+
+        const popupContent = `
+          <b>${shift}</b><br>
+          ${loc.adresse}<br>
+          <b>Rundering:</b> ${runderingType}<br>
+          <b>Tid:</b> ${loc.tid}<br>
+          <b>Bemærkning:</b> ${loc.bemærkning || '-'}
+        `;
+
+        const marker = L.circleMarker(loc.koordinater, {
+          color: markerColor,
+          radius: 6,
+          fillOpacity: 0.8,
+          rundering: runderingType,
+          visible: true
+        }).addTo(map);
+
+        marker.bindPopup(popupContent);
+        marker.on('mouseover', function(){ this.openPopup(); });
+        marker.on('mouseout', function(){ this.closePopup(); });
+
+        markers.push(marker);
+        bounds.extend(loc.koordinater);
+
+        if (b_1_times.includes(loc.tid)) bMarkers.b_1.push(marker);
+        if (b_2_times.includes(loc.tid)) bMarkers.b_2.push(marker);
+        if (b_3_times.includes(loc.tid)) bMarkers.b_3.push(marker);
+      });
+    }
+
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [30,30] });
+
+    // ==================== Toggle funktioner ====================
+    let activeRundering = null;
+    let activeBSection = null;
+
+    function showAllMarkers() {
+      markers.forEach(marker => {
+        if (!marker.options.visible) {
+          marker.addTo(map);
+          marker.options.visible = true;
+        }
+      });
+      activeRundering = null;
+      activeBSection = null;
+      document.querySelectorAll('.filter-buttons button').forEach(b => b.classList.remove('active'));
+    }
+
+    function toggleRundering(type, btn) {
+      if (activeRundering === type) { showAllMarkers(); return; }
+
+      document.querySelectorAll('.filter-buttons button').forEach(b => {
+        if(b.onclick.toString().includes("toggleRundering")) b.classList.remove('active');
+      });
+
+      markers.forEach(marker => marker.remove());
+      markers.forEach(marker => marker.options.visible = false);
+
+      markers.forEach(marker => {
+        if (marker.options.rundering === type) {
+          marker.addTo(map);
+          marker.options.visible = true;
+        }
+      });
+
+      btn.classList.add('active');
+      activeRundering = type;
+      activeBSection = null;
+    }
+
+    function toggleBSection(section, btn) {
+      if (activeBSection === section) { showAllMarkers(); return; }
+
+      document.querySelectorAll('.filter-buttons button').forEach(b => {
+        if(b.onclick.toString().includes("toggleBSection")) b.classList.remove('active');
+      });
+
+      Object.values(bMarkers).flat().forEach(marker => marker.remove());
+      Object.values(bMarkers).flat().forEach(marker => marker.options.visible = false);
+
+      bMarkers[section].forEach(marker => {
+        marker.addTo(map);
+        marker.options.visible = true;
+      });
+
+      btn.classList.add('active');
+      activeBSection = section;
+      activeRundering = null;
+    }
+  </script>
+</body>
+</html>
