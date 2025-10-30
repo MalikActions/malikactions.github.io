@@ -2,218 +2,196 @@
 <html lang="da">
 <head>
   <meta charset="UTF-8">
-  <title>B-Vagter | København</title>
+  <title>B-vagter i Storkøbenhavn</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; }
 
-    .legend, .filter-box {
+    .legend {
       position: absolute;
+      bottom: 10px;
+      left: 10px;
       background: white;
       padding: 8px 12px;
       border-radius: 6px;
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
-      font-family: Arial, sans-serif;
       font-size: 14px;
       line-height: 1.5em;
     }
+    .legend span {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 6px;
+      border-radius: 50%;
+    }
 
-    .legend { bottom: 10px; left: 10px; z-index: 1001; }
-    .legend span { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 50%; }
-
-    .filter-box { top: 10px; right: 10px; z-index: 1000; width: 160px; }
-
-    .filter-box select, .filter-box button {
-      width: 100%;
-      margin-bottom: 6px;
+    .controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: white;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+    }
+    .controls button {
+      display: block;
+      width: 160px;
+      margin: 5px auto;
       padding: 6px 8px;
-      border-radius: 4px;
-      border: 1px solid #999;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    .filter-box button {
-      background-color: #ccc;
-      color: white;
       border: none;
-      transition: background 0.2s;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      color: white;
+      background-color: #28a745; /* Grøn standard */
+      transition: background 0.3s;
     }
-
-    .filter-box button.active {
-      background-color: #28a745;
+    .controls button.active {
+      background-color: #dc3545; /* Rød aktiv */
     }
-
-    .filter-box hr {
-      border: 0;
-      border-top: 1px solid #999;
-      margin: 8px 0;
+    .controls select {
+      display: block;
+      margin: 10px auto;
+      padding: 5px;
+      width: 160px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
-  <div class="filter-box">
+  <div class="controls">
     <select id="daySelector" onchange="loadDay(this.value)">
       <option value="lordag.json">Lørdag</option>
       <option value="sondag.json">Søndag</option>
     </select>
-    <hr>
-    <button onclick="toggleRundering(0, this)">Indvendige</button>
-    <button onclick="toggleRundering(1, this)">Udvendige</button>
-    <button onclick="toggleRundering(2, this)">Beggedele</button>
-    <hr>
-    <button onclick="toggleBSection('b_1', this)">Aften</button>
-    <button onclick="toggleBSection('b_2', this)">Natten</button>
-    <button onclick="toggleBSection('b_3', this)">Morgen</button>
+
+    <button id="morgenBtn" onclick="filterByTime('Morgen')">Morgen</button>
+    <button id="aftenBtn" onclick="filterByTime('Aften')">Aften</button>
+    <button id="natBtn" onclick="filterByTime('Nat')">Nat</button>
+
+    <button id="indvBtn" onclick="filterByType('indvendig')">Indvendige</button>
+    <button id="udvBtn" onclick="filterByType('udvendig')">Udvendige</button>
+    <button id="beggeBtn" onclick="filterByType('begge')">Begge dele</button>
   </div>
 
   <div class="legend">
-    <div><span style="background: blue"></span> B1-vagt (Indvendig)</div>
-    <div><span style="background: deepskyblue"></span> B1-vagt (Udvendig)</div>
-    <div><span style="background: dodgerblue"></span> B1-vagt (Both)</div>
-    <div><span style="background: red"></span> B2-vagt (Indvendig)</div>
-    <div><span style="background: crimson"></span> B2-vagt (Udvendig)</div>
-    <div><span style="background: orangered"></span> B2-vagt (Both)</div>
-    <div><span style="background: green"></span> B3-vagt (Indvendig)</div>
-    <div><span style="background: forestgreen"></span> B3-vagt (Udvendig)</div>
-    <div><span style="background: limegreen"></span> B3-vagt (Both)</div>
+    <div><span style="background: blue"></span> B1-vagt</div>
+    <div><span style="background: red"></span> B2-vagt</div>
+    <div><span style="background: green"></span> B3-vagt</div>
   </div>
 
   <script>
-    // ---------- Kort opsætning ----------
-    const map = L.map('map', {
-      minZoom: 11,
-      maxZoom: 17,
-      maxBounds: [[55.55, 12.30], [55.78, 12.75]],
-      maxBoundsViscosity: 1.0
-    }).setView([55.68, 12.54], 12);
-
+    // Init Leaflet kort
+    const map = L.map('map').setView([55.6761, 12.5683], 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    const runderingFarver = {
-      B1: {0: "blue", 1: "deepskyblue", 2: "dodgerblue"},
-      B2: {0: "red", 1: "crimson", 2: "orangered"},
-      B3: {0: "green", 1: "forestgreen", 2: "limegreen"}
-    };
+    const colors = { B1: "blue", B2: "red", B3: "green" };
+    let allMarkers = [];
+    let currentData = null;
+    let activeTimeFilter = null;
+    let activeTypeFilter = null;
 
-    let markers = [];
-    let bMarkers = { b_1: [], b_2: [], b_3: [] };
-    let activeRundering = null;
-    let activeBSection = null;
-
-    async function loadDay(file) {
-      const res = await fetch(file);
-      const data = await res.json();
-      renderMarkers(data);
+    // --- AJAX loader ---
+    function loadDay(fileName) {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", fileName, true);
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+          if (xhr.status === 200) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              currentData = data;
+              updateMap();
+            } catch (e) {
+              console.error("JSON-fejl:", e);
+              alert("Kunne ikke læse JSON-data korrekt.");
+            }
+          } else {
+            console.error("Fejl ved hentning:", xhr.status);
+            alert("Kunne ikke hente " + fileName);
+          }
+        }
+      };
+      xhr.send();
     }
 
-    function renderMarkers(vagterData) {
-      markers.forEach(m => map.removeLayer(m));
-      markers = [];
-      bMarkers = { b_1: [], b_2: [], b_3: [] };
+    // --- Opdater kort ---
+    function updateMap() {
+      // Fjern gamle markører
+      allMarkers.forEach(marker => map.removeLayer(marker));
+      allMarkers = [];
+
+      if (!currentData) return;
 
       const bounds = L.latLngBounds();
-      const b_1_times = ["19:00–07:00","19:00–24:00","19:00–23:00","19:00–19:15","19:15–20:00","21:00","21:00–00:00","22:00","22:00–01:00","22:00–04:00","23:00"];
-      const b_2_times = ["23:00–02:00","00:00–02:00","00:00–03:00","01:00–03:00","01:00–03:15"];
-      const b_3_times = ["02:00–06:00","01:30","03:00","05:00","05:30","06:00"];
-
-      for (const [shift, locations] of Object.entries(vagterData)) {
+      for (const [shift, locations] of Object.entries(currentData)) {
         locations.forEach(loc => {
-          const runderingType = loc.rundering[0];
-          const markerColor = runderingFarver[shift][runderingType];
+          if (activeTimeFilter && loc.tidSektion !== activeTimeFilter) return;
+          if (activeTypeFilter && loc.rundering !== activeTypeFilter) return;
 
-          const marker = L.circleMarker(loc.koordinater, {
-            color: markerColor,
+          const marker = L.circleMarker([loc.lat, loc.lng], {
+            color: colors[shift],
             radius: 6,
-            fillOpacity: 0.8,
-            rundering: runderingType,
-            visible: true
-          }).addTo(map);
+            fillOpacity: 0.8
+          })
+          .bindPopup(`<b>${shift}</b><br>${loc.adresse}<br><b>Tid:</b> ${loc.tid}<br><b>Rundering:</b> ${loc.rundering}<br><b>Bemærkninger:</b> ${loc.bemærkninger || ''}`)
+          .on('mouseover', function() { this.openPopup(); })
+          .on('mouseout', function() { this.closePopup(); });
 
-          marker.bindPopup(`
-            <b>${shift}</b><br>
-            ${loc.adresse}<br>
-            <b>Rundering:</b> ${runderingType}<br>
-            <b>Tid:</b> ${loc.tid}<br>
-            <b>Bemærkning:</b> ${loc.bemærkning || '-'}
-          `);
-
-          marker.on('mouseover', function(){ this.openPopup(); });
-          marker.on('mouseout', function(){ this.closePopup(); });
-
-          markers.push(marker);
-          bounds.extend(loc.koordinater);
-
-          if (b_1_times.includes(loc.tid)) bMarkers.b_1.push(marker);
-          if (b_2_times.includes(loc.tid)) bMarkers.b_2.push(marker);
-          if (b_3_times.includes(loc.tid)) bMarkers.b_3.push(marker);
+          marker.addTo(map);
+          allMarkers.push(marker);
+          bounds.extend([loc.lat, loc.lng]);
         });
       }
-      if (bounds.isValid()) map.fitBounds(bounds, { padding: [30,30] });
+      if (bounds.isValid()) map.fitBounds(bounds);
     }
 
-    function showAllMarkers() {
-      markers.forEach(marker => {
-        if (!marker.options.visible) {
-          marker.addTo(map);
-          marker.options.visible = true;
-        }
-      });
-      activeRundering = null;
-      activeBSection = null;
-      document.querySelectorAll('.filter-box button').forEach(b => b.classList.remove('active'));
+    // --- Filtrering efter tid ---
+    function filterByTime(section) {
+      const btn = document.getElementById(section.toLowerCase() + "Btn");
+      const allTimeButtons = ["morgenBtn", "aftenBtn", "natBtn"];
+      allTimeButtons.forEach(id => document.getElementById(id).classList.remove("active"));
+
+      if (activeTimeFilter === section) {
+        activeTimeFilter = null;
+        updateMap();
+        return;
+      }
+      activeTimeFilter = section;
+      btn.classList.add("active");
+      updateMap();
     }
 
-    function toggleRundering(type, btn) {
-      if (activeRundering === type) return showAllMarkers();
+    // --- Filtrering efter runderingstype ---
+    function filterByType(type) {
+      const btnMap = {
+        indvendig: document.getElementById("indvBtn"),
+        udvendig: document.getElementById("udvBtn"),
+        begge: document.getElementById("beggeBtn")
+      };
+      Object.values(btnMap).forEach(b => b.classList.remove("active"));
 
-      document.querySelectorAll('.filter-box button').forEach(b => {
-        if(b.onclick.toString().includes("toggleRundering")) b.classList.remove('active');
-      });
-
-      markers.forEach(marker => {
-        marker.remove();
-        marker.options.visible = false;
-        if (marker.options.rundering === type) {
-          marker.addTo(map);
-          marker.options.visible = true;
-        }
-      });
-
-      btn.classList.add('active');
-      activeRundering = type;
-      activeBSection = null;
+      if (activeTypeFilter === type) {
+        activeTypeFilter = null;
+        updateMap();
+        return;
+      }
+      activeTypeFilter = type;
+      btnMap[type].classList.add("active");
+      updateMap();
     }
 
-    function toggleBSection(section, btn) {
-      if (activeBSection === section) return showAllMarkers();
-
-      document.querySelectorAll('.filter-box button').forEach(b => {
-        if(b.onclick.toString().includes("toggleBSection")) b.classList.remove('active');
-      });
-
-      Object.values(bMarkers).flat().forEach(marker => {
-        marker.remove();
-        marker.options.visible = false;
-      });
-
-      bMarkers[section].forEach(marker => {
-        marker.addTo(map);
-        marker.options.visible = true;
-      });
-
-      btn.classList.add('active');
-      activeBSection = section;
-      activeRundering = null;
-    }
-
-    // indlæs Lørdag som standard
+    // --- Indlæs lørdag som standard ---
     loadDay("lordag.json");
   </script>
 </body>
