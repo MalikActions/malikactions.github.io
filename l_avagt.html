@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <title>A Vagter | København</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
+
+    .legend, .filter-buttons {
+      position: absolute;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5em;
+    }
+
+    .legend { bottom: 10px; left: 10px; z-index: 1001; }
+    .legend span { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 50%; }
+
+    .filter-buttons {
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+    }
+
+    .filter-buttons button {
+      display: block;
+      margin: 4px 0;
+      padding: 6px 10px;
+      width: 130px;
+      cursor: pointer;
+      background-color: #ccc;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+
+    .filter-buttons button.active {
+      background-color: #28a745;
+    }
+
+    .filter-buttons hr {
+      margin: 8px 0;
+      border: 0;
+      border-top: 1px solid #999;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="filter-buttons">
+    <!-- Runderingstyper -->
+    <button onclick="toggleRundering(0, this)">Indvendige</button>
+    <button onclick="toggleRundering(1, this)">Udvendige</button>
+    <button onclick="toggleRundering(2, this)">Beggedele</button>
+    <hr>
+    <!-- Sektioner -->
+    <button onclick="toggleASection('a_1', this)">Morgen</button>
+    <button onclick="toggleASection('a_2', this)">Formiddag</button>
+    <button onclick="toggleASection('a_3', this)">Eftermiddag</button>
+  </div>
+
+  <div class="legend">
+    <div><span style="background: orange"></span> A1-vagt (Indvendig)</div>
+    <div><span style="background: gold"></span> A1-vagt (Udvendig)</div>
+    <div><span style="background: darkorange"></span> A1-vagt (Begge dele)</div>
+    <div><span style="background: teal"></span> A2-vagt (Indvendig)</div>
+    <div><span style="background: lightseagreen"></span> A2-vagt (Udvendig)</div>
+    <div><span style="background: mediumseagreen"></span> A2-vagt (Begge dele)</div>
+    <div><span style="background: purple"></span> A3-vagt (Indvendig)</div>
+    <div><span style="background: orchid"></span> A3-vagt (Udvendig)</div>
+    <div><span style="background: mediumpurple"></span> A3-vagt (Begge dele)</div>
+  </div>
+
+  <script>
+    // ==================== Kort setup ====================
+    const map = L.map('map', {
+      minZoom: 11,
+      maxZoom: 17,
+      maxBounds: [
+        [55.55, 12.30],
+        [55.78, 12.75]
+      ],
+      maxBoundsViscosity: 1.0
+    }).setView([55.68, 12.54], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // ==================== Farver for rundering ====================
+    const runderingFarver = {
+      A1: {0: "orange", 1: "gold", 2: "darkorange"},
+      A2: {0: "teal", 1: "lightseagreen", 2: "mediumseagreen"},
+      A3: {0: "purple", 1: "orchid", 2: "mediumpurple"}
+    };
+
+    // ==================== A-vagter data ====================
+    const vagterData = {
+  "A1": [
+    { "adresse":"Vester Voldgade - Tårnet", "koordinater":[55.67459479959544,12.572191030484584], "tid":"07:00–09:00", "rundering":[0,0], "bemærkning":"Rundere Vester Voldgade siden - tårnet" },
+    { "adresse":"Bag porten (Vester Voldgade)", "koordinater":[55.67502213992866,12.570970726101844], "tid":"09:30–13:00", "rundering":[0,0], "bemærkning":"Plan i bagporten / kontrol" },
+    { "adresse":"Portner (A1)", "koordinater":[55.67500613720165,12.571206283504319], "tid":"13:00–16:00", "rundering":[0,0], "bemærkning":"Portneropgave ved Rådhuset" }
+  ],
+  "A2": [
+    { "adresse":"Tivoli-siden (Rådhuset)", "koordinater":[55.67497292650145,12.571349195828784], "tid":"07:00–09:00", "rundering":[0,0], "bemærkning":"Fejetjeneste og kontrollere havemiljø" },
+    { "adresse":"Lukke Tivoliporten (sommertid)", "koordinater":[55.675690466403545,12.569488133621334], "tid":"08:45–09:30", "rundering":[1,0], "bemærkning":"Lukke/Åbne Tivoliporten i sommerperioden" },
+    { "adresse":"Yderdør V.V. 82", "koordinater":[55.67459479959544,12.572191030484584], "tid":"11:45–12:15", "rundering":[1,0], "bemærkning":"Nøgleboks i hovedport" },
+    { "adresse":"Tivoli runderingsrute", "koordinater":[55.676700,12.569000], "tid":"14:45–15:15", "rundering":[0,0], "bemærkning":"Rundere Tivoli siden" }
+  ],
+  "A3": [
+    { "adresse":"Portner (A3 rutine)", "koordinater":[55.67440520941629,12.57250579081794], "tid":"07:00–08:30", "rundering":[0,0], "bemærkning":"Kontrol af nøgler og meddelelser" },
+    { "adresse":"HNG (A3)", "koordinater":[55.67925295873096,12.562621536687619], "tid":"08:30–09:30", "rundering":[1,0], "bemærkning":"Lukke/låse adgangspartiet" },
+    { "adresse":"Stormgade 20", "koordinater":[55.673862594269934,12.5722711356852], "tid":"09:30–13:00", "rundering":[0,0], "bemærkning":"Lukke runderingsopgaver i ejendommen" },
+    { "adresse":"Bernstorffsgade 15-17", "koordinater":[55.67133434592488,12.568544366161564], "tid":"16:00–17:00", "rundering":[0,0], "bemærkning":"Indvendig rundering" },
+    { "adresse":"Vester Voldgade 82", "koordinater":[55.67459479959544,12.572191030484584], "tid":"16:00–17:00", "rundering":[0,0], "bemærkning":"Indvendig rundering og nøglebokse" }
+  ]
+};
+
+
+    // ==================== Marker setup ====================
+    const bounds = L.latLngBounds();
+    const markers = [];
+    const aMarkers = { a_1: [], a_2: [], a_3: [] };
+
+    const a_1_times = ["07:00–10:00", "08:00–11:00", "09:00–11:30"];
+    const a_2_times = ["10:00–13:00", "11:00–14:00", "12:00–14:30"];
+    const a_3_times = ["14:00–16:00", "16:00–18:00", "18:00–19:00"];
+
+    for (const [shift, locations] of Object.entries(vagterData)) {
+      locations.forEach(loc => {
+        const runderingType = loc.rundering[0];
+        const markerColor = runderingFarver[shift][runderingType];
+
+        const popupContent = `
+          <b>${shift}</b><br>
+          ${loc.adresse}<br>
+          <b>Rundering:</b> ${runderingType}<br>
+          <b>Tid:</b> ${loc.tid}<br>
+          <b>Bemærkning:</b> ${loc.bemærkning || '-'}
+        `;
+
+        const marker = L.circleMarker(loc.koordinater, {
+          color: markerColor,
+          radius: 6,
+          fillOpacity: 0.8,
+          rundering: runderingType,
+          visible: true
+        }).addTo(map);
+
+        marker.bindPopup(popupContent);
+        marker.on('mouseover', function(){ this.openPopup(); });
+        marker.on('mouseout', function(){ this.closePopup(); });
+
+        markers.push(marker);
+        bounds.extend(loc.koordinater);
+
+        if (a_1_times.includes(loc.tid)) aMarkers.a_1.push(marker);
+        if (a_2_times.includes(loc.tid)) aMarkers.a_2.push(marker);
+        if (a_3_times.includes(loc.tid)) aMarkers.a_3.push(marker);
+      });
+    }
+
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [30,30] });
+
+    // ==================== Toggle funktioner ====================
+    let activeRundering = null;
+    let activeASection = null;
+
+    function showAllMarkers() {
+      markers.forEach(marker => {
+        if (!marker.options.visible) {
+          marker.addTo(map);
+          marker.options.visible = true;
+        }
+      });
+      activeRundering = null;
+      activeASection = null;
+      document.querySelectorAll('.filter-buttons button').forEach(b => b.classList.remove('active'));
+    }
+
+    function toggleRundering(type, btn) {
+      if (activeRundering === type) { showAllMarkers(); return; }
+
+      document.querySelectorAll('.filter-buttons button').forEach(b => {
+        if(b.onclick.toString().includes("toggleRundering")) b.classList.remove('active');
+      });
+
+      markers.forEach(marker => marker.remove());
+      markers.forEach(marker => marker.options.visible = false);
+
+      markers.forEach(marker => {
+        if (marker.options.rundering === type) {
+          marker.addTo(map);
+          marker.options.visible = true;
+        }
+      });
+
+      btn.classList.add('active');
+      activeRundering = type;
+      activeASection = null;
+    }
+
+    function toggleASection(section, btn) {
+      if (activeASection === section) { showAllMarkers(); return; }
+
+      document.querySelectorAll('.filter-buttons button').forEach(b => {
+        if(b.onclick.toString().includes("toggleASection")) b.classList.remove('active');
+      });
+
+      Object.values(aMarkers).flat().forEach(marker => marker.remove());
+      Object.values(aMarkers).flat().forEach(marker => marker.options.visible = false);
+
+      aMarkers[section].forEach(marker => {
+        marker.addTo(map);
+        marker.options.visible = true;
+      });
+
+      btn.classList.add('active');
+      activeASection = section;
+      activeRundering = null;
+    }
+  </script>
+</body>
+</html>
