@@ -1,1 +1,84 @@
-this is a test
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <title>B Vagter | København</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
+
+    .legend, .filter-buttons {
+      position: absolute;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5em;
+    }
+
+    .legend { bottom: 10px; left: 10px; z-index: 1001; }
+	
+    .legend span { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 50%; }
+
+    .filter-buttons {
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+    }
+
+    .filter-buttons button {
+      display: block;
+      margin: 4px 0;
+      padding: 6px 10px;
+      width: 130px;
+      cursor: pointer;
+      background-color: #ccc;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+
+    .filter-buttons button.active {
+      background-color: #28a745;
+    }
+
+    .filter-buttons hr {
+      margin: 8px 0;
+      border: 0;
+      border-top: 1px solid #999;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="filter-buttons">
+    <button onclick="toggleRundering(0, this)">Indvendige</button>
+    <button onclick="toggleRundering(1, this)">Udvendige</button>
+    <button onclick="toggleRundering(2, this)">Beggedele</button>
+    <hr>
+    <button onclick="toggleBSection('b_1', this)">Aften</button>
+    <button onclick="toggleBSection('b_2', this)">Natten</button>
+    <button onclick="toggleBSection('b_3', this)">Morgen</button>
+  </div>
+
+  <div class="legend">
+    <div><span style="background: blue"></span> B1-vagt (Indvendig)</div>
+    <div><span style="background: deepskyblue"></span> B1-vagt (Udvendig)</div>
+    <div><span style="background: dodgerblue"></span> B1-vagt (Both)</div>
+    <div><span style="background: red"></span> B2-vagt (Indvendig)</div>
+    <div><span style="background: crimson"></span> B2-vagt (Udvendig)</div>
+    <div><span style="background: orangered"></span> B2-vagt (Both)</div>
+    <div><span style="background: green"></span> B3-vagt (Indvendig)</div>
+    <div><span style="background: forestgreen"></span> B3-vagt (Udvendig)</div>
+    <div><span style="background: limegreen"></span> B3-vagt (Both)</div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
