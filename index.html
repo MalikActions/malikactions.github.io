@@ -2,13 +2,13 @@
 <html lang="da">
 <head>
   <meta charset="UTF-8">
-  <title>B Vagter | København</title>
+  <title>B-Vagter | København</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
 
-    .legend, .filter-buttons {
+    .legend, .filter-box {
       position: absolute;
       background: white;
       padding: 8px 12px;
@@ -20,44 +20,47 @@
     }
 
     .legend { bottom: 10px; left: 10px; z-index: 1001; }
-	
     .legend span { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 50%; }
 
-    .filter-buttons {
-      top: 10px;
-      right: 10px;
-      z-index: 1000;
+    .filter-box { top: 10px; right: 10px; z-index: 1000; width: 160px; }
+
+    .filter-box select, .filter-box button {
+      width: 100%;
+      margin-bottom: 6px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid #999;
+      font-weight: bold;
+      cursor: pointer;
     }
 
-    .filter-buttons button {
-      display: block;
-      margin: 4px 0;
-      padding: 6px 10px;
-      width: 130px;
-      cursor: pointer;
+    .filter-box button {
       background-color: #ccc;
-      border: none;
-      border-radius: 4px;
       color: white;
-      font-weight: bold;
+      border: none;
       transition: background 0.2s;
     }
 
-    .filter-buttons button.active {
+    .filter-box button.active {
       background-color: #28a745;
     }
 
-    .filter-buttons hr {
-      margin: 8px 0;
+    .filter-box hr {
       border: 0;
       border-top: 1px solid #999;
+      margin: 8px 0;
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
-  <div class="filter-buttons">
+  <div class="filter-box">
+    <select id="daySelector" onchange="loadDay(this.value)">
+      <option value="lørdag.json">Lørdag</option>
+      <option value="søndag.json">Søndag</option>
+    </select>
+    <hr>
     <button onclick="toggleRundering(0, this)">Indvendige</button>
     <button onclick="toggleRundering(1, this)">Udvendige</button>
     <button onclick="toggleRundering(2, this)">Beggedele</button>
@@ -79,6 +82,139 @@
     <div><span style="background: limegreen"></span> B3-vagt (Both)</div>
   </div>
 
-  <script src="script.js"></script>
+  <script>
+    // ---------- Kort opsætning ----------
+    const map = L.map('map', {
+      minZoom: 11,
+      maxZoom: 17,
+      maxBounds: [[55.55, 12.30], [55.78, 12.75]],
+      maxBoundsViscosity: 1.0
+    }).setView([55.68, 12.54], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    const runderingFarver = {
+      B1: {0: "blue", 1: "deepskyblue", 2: "dodgerblue"},
+      B2: {0: "red", 1: "crimson", 2: "orangered"},
+      B3: {0: "green", 1: "forestgreen", 2: "limegreen"}
+    };
+
+    let markers = [];
+    let bMarkers = { b_1: [], b_2: [], b_3: [] };
+    let activeRundering = null;
+    let activeBSection = null;
+
+    async function loadDay(file) {
+      const res = await fetch(file);
+      const data = await res.json();
+      renderMarkers(data);
+    }
+
+    function renderMarkers(vagterData) {
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+      bMarkers = { b_1: [], b_2: [], b_3: [] };
+
+      const bounds = L.latLngBounds();
+      const b_1_times = ["19:00–07:00","19:00–24:00","19:00–23:00","19:00–19:15","19:15–20:00","21:00","21:00–00:00","22:00","22:00–01:00","22:00–04:00","23:00"];
+      const b_2_times = ["23:00–02:00","00:00–02:00","00:00–03:00","01:00–03:00","01:00–03:15"];
+      const b_3_times = ["02:00–06:00","01:30","03:00","05:00","05:30","06:00"];
+
+      for (const [shift, locations] of Object.entries(vagterData)) {
+        locations.forEach(loc => {
+          const runderingType = loc.rundering[0];
+          const markerColor = runderingFarver[shift][runderingType];
+
+          const marker = L.circleMarker(loc.koordinater, {
+            color: markerColor,
+            radius: 6,
+            fillOpacity: 0.8,
+            rundering: runderingType,
+            visible: true
+          }).addTo(map);
+
+          marker.bindPopup(`
+            <b>${shift}</b><br>
+            ${loc.adresse}<br>
+            <b>Rundering:</b> ${runderingType}<br>
+            <b>Tid:</b> ${loc.tid}<br>
+            <b>Bemærkning:</b> ${loc.bemærkning || '-'}
+          `);
+
+          marker.on('mouseover', function(){ this.openPopup(); });
+          marker.on('mouseout', function(){ this.closePopup(); });
+
+          markers.push(marker);
+          bounds.extend(loc.koordinater);
+
+          if (b_1_times.includes(loc.tid)) bMarkers.b_1.push(marker);
+          if (b_2_times.includes(loc.tid)) bMarkers.b_2.push(marker);
+          if (b_3_times.includes(loc.tid)) bMarkers.b_3.push(marker);
+        });
+      }
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [30,30] });
+    }
+
+    function showAllMarkers() {
+      markers.forEach(marker => {
+        if (!marker.options.visible) {
+          marker.addTo(map);
+          marker.options.visible = true;
+        }
+      });
+      activeRundering = null;
+      activeBSection = null;
+      document.querySelectorAll('.filter-box button').forEach(b => b.classList.remove('active'));
+    }
+
+    function toggleRundering(type, btn) {
+      if (activeRundering === type) return showAllMarkers();
+
+      document.querySelectorAll('.filter-box button').forEach(b => {
+        if(b.onclick.toString().includes("toggleRundering")) b.classList.remove('active');
+      });
+
+      markers.forEach(marker => {
+        marker.remove();
+        marker.options.visible = false;
+        if (marker.options.rundering === type) {
+          marker.addTo(map);
+          marker.options.visible = true;
+        }
+      });
+
+      btn.classList.add('active');
+      activeRundering = type;
+      activeBSection = null;
+    }
+
+    function toggleBSection(section, btn) {
+      if (activeBSection === section) return showAllMarkers();
+
+      document.querySelectorAll('.filter-box button').forEach(b => {
+        if(b.onclick.toString().includes("toggleBSection")) b.classList.remove('active');
+      });
+
+      Object.values(bMarkers).flat().forEach(marker => {
+        marker.remove();
+        marker.options.visible = false;
+      });
+
+      bMarkers[section].forEach(marker => {
+        marker.addTo(map);
+        marker.options.visible = true;
+      });
+
+      btn.classList.add('active');
+      activeBSection = section;
+      activeRundering = null;
+    }
+
+    // indlæs Lørdag som standard
+    loadDay("lørdag.json");
+  </script>
 </body>
 </html>
