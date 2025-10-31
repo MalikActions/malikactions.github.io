@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <title>S A Vagter | København</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
+
+    .legend, .filter-buttons {
+      position: absolute;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.3);
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5em;
+    }
+
+    .legend { bottom: 10px; left: 10px; z-index: 1001; }
+    .legend span { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 50%; }
+
+    .filter-buttons {
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+    }
+
+    .filter-buttons button {
+      display: block;
+      margin: 4px 0;
+      padding: 6px 10px;
+      width: 130px;
+      cursor: pointer;
+      background-color: #ccc;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+
+    .filter-buttons button.active {
+      background-color: #28a745;
+    }
+
+    .filter-buttons hr {
+      margin: 8px 0;
+      border: 0;
+      border-top: 1px solid #999;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="filter-buttons">
+    <button onclick="toggleRundering(0, this)">Indvendige</button>
+    <button onclick="toggleRundering(1, this)">Udvendige</button>
+    <button onclick="toggleRundering(2, this)">Begge dele</button>
+    <hr>
+    <button onclick="toggleSection('A2', this)">A2 Vagt</button>
+    <button onclick="toggleSection('A3', this)">A3 Vagt</button>
+  </div>
+
+  <div class="legend">
+    <div><span style="background: blue"></span> A2 (Indvendig)</div>
+    <div><span style="background: deepskyblue"></span> A2 (Udvendig)</div>
+    <div><span style="background: dodgerblue"></span> A2 (Begge)</div>
+    <div><span style="background: green"></span> A3 (Indvendig)</div>
+    <div><span style="background: forestgreen"></span> A3 (Udvendig)</div>
+    <div><span style="background: limegreen"></span> A3 (Begge)</div>
+  </div>
+
+  <script>
+    const map = L.map('map', {
+      minZoom: 11,
+      maxZoom: 17,
+      maxBounds: [
+        [55.55, 12.30],
+        [55.78, 12.75]
+      ],
+      maxBoundsViscosity: 1.0
+    }).setView([55.68, 12.54], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    const runderingFarver = {
+      A2: {0: "blue", 1: "deepskyblue", 2: "dodgerblue"},
+      A3: {0: "green", 1: "forestgreen", 2: "limegreen"}
+    };
+
+    const vagterData = {
+      "A2": [
+        { "adresse":"Rådhuset – VV siden","koordinater":[55.676045,12.570981],"tid":"07:00–19:00","rundering":[2,0],"bemærkning":"Rengøring efter liste. Kontroller affald ved indgange." },
+        { "adresse":"Rådhuset (have)","koordinater":[55.67497292650145,12.571349195828784],"tid":"09:00","rundering":[2,0],"bemærkning":"Åbne porte til haven." },
+        { "adresse":"HNG","koordinater":[55.67925295873096,12.562621536687619],"tid":"12:00–17:00","rundering":[0,0],"bemærkning":"Indvendig rundering." },
+        { "adresse":"Rådhuset VV-side (opsyn)","koordinater":[55.676045,12.570981],"tid":"14:30","rundering":[2,0],"bemærkning":"Opsyn i haven." },
+        { "adresse":"Rådhuset (yderdøre)","koordinater":[55.676045,12.570981],"tid":"13:00","rundering":[1,0],"bemærkning":"Nøgleboks ved hovedport." }
+      ],
+      "A3": [
+        { "adresse":"Rådhuset (portnertjeneste)","koordinater":[55.67497292650145,12.571349195828784],"tid":"07:00–19:15","rundering":[2,0],"bemærkning":"Kontrollér nøgleskabe og beskeder." },
+        { "adresse":"Stormgade 20 (stuen)","koordinater":[55.673862594269934,12.5722711356852],"tid":"08:15","rundering":[1,0],"bemærkning":"Lås døre i stueetagen og tilkobl alarmen." },
+        { "adresse":"Sundhedshuset i Vanløse (Indertoften)","koordinater":[55.686581085564164,12.489178877055254],"tid":"16:00–18:30","rundering":[0,1],"bemærkning":"Indvendig rundering." },
+        { "adresse":"Jydeholmen 15","koordinater":[55.68553850761419,12.48925394943301],"tid":"14:30","rundering":[0,1],"bemærkning":"Indvendig rundering." },
+        { "adresse":"Vester Voldgade 82","koordinater":[55.676045,12.570981],"tid":"16:00–17:00","rundering":[2,1],"bemærkning":"Indvendig rundering + yderdør." }
+      ]
+    };
+
+    const markers = [];
+    const sectionMarkers = {A2: [], A3: []};
+    const usedCoords = new Set();
+    const bounds = L.latLngBounds();
+
+    function offsetIfDuplicate(lat, lng) {
+      const key = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+      if (usedCoords.has(key)) {
+        const offsetLat = lat + (Math.random() - 0.5) * 0.0003;
+        const offsetLng = lng + (Math.random() - 0.5) * 0.0003;
+        return [offsetLat, offsetLng];
+      } else {
+        usedCoords.add(key);
+        return [lat, lng];
+      }
+    }
+
+    for (const [section, locations] of Object.entries(vagterData)) {
+      locations.forEach(loc => {
+        const type = loc.rundering[0];
+        const color = runderingFarver[section][type];
+        const coords = offsetIfDuplicate(loc.koordinater[0], loc.koordinater[1]);
+        const popup = `
+          <b>${section}</b><br>
+          ${loc.adresse}<br>
+          <b>Tid:</b> ${loc.tid}<br>
+          <b>Rundering:</b> ${type === 0 ? "Indvendig" : type === 1 ? "Udvendig" : "Begge"}<br>
+          <b>Bemærkning:</b> ${loc.bemærkning || "-"}
+        `;
+        const marker = L.circleMarker(coords, {
+          color,
+          radius: 6,
+          fillOpacity: 0.9,
+          rundering: type,
+          visible: true,
+          section
+        }).addTo(map);
+
+        marker.bindPopup(popup);
+        marker.on("mouseover", function(){ this.openPopup(); });
+        marker.on("mouseout", function(){ this.closePopup(); });
+
+        markers.push(marker);
+        sectionMarkers[section].push(marker);
+        bounds.extend(coords);
+      });
+    }
+
+    if (bounds.isValid()) map.fitBounds(bounds, {padding: [30,30]});
+
+    let activeRundering = null;
+    let activeSection = null;
+
+    function showAll() {
+      markers.forEach(m => { if(!m.options.visible) m.addTo(map); m.options.visible = true; });
+      document.querySelectorAll('.filter-buttons button').forEach(b => b.classList.remove('active'));
+      activeRundering = null;
+      activeSection = null;
+    }
+
+    function toggleRundering(type, btn) {
+      if (activeRundering === type) return showAll();
+      document.querySelectorAll('.filter-buttons button').forEach(b => {
+        if(b.onclick.toString().includes("toggleRundering")) b.classList.remove('active');
+      });
+      markers.forEach(m => { m.remove(); m.options.visible = false; });
+      markers.forEach(m => {
+        if (m.options.rundering === type) { m.addTo(map); m.options.visible = true; }
+      });
+      btn.classList.add('active');
+      activeRundering = type;
+      activeSection = null;
+    }
+
+    function toggleSection(section, btn) {
+      if (activeSection === section) return showAll();
+      document.querySelectorAll('.filter-buttons button').forEach(b => {
+        if(b.onclick.toString().includes("toggleSection")) b.classList.remove('active');
+      });
+      markers.forEach(m => { m.remove(); m.options.visible = false; });
+      sectionMarkers[section].forEach(m => { m.addTo(map); m.options.visible = true; });
+      btn.classList.add('active');
+      activeSection = section;
+      activeRundering = null;
+    }
+  </script>
+</body>
+</html>
