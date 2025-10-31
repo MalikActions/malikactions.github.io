@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <title>9/10/11-Vagt | København</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+
+    .legend, .filter-buttons {
+      position: absolute;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.25);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .legend { bottom: 12px; left: 12px; z-index: 1001; max-width: 260px; }
+    .legend div { margin-bottom: 6px; }
+    .legend span { display:inline-block; width:12px; height:12px; margin-right:8px; border-radius:50%; vertical-align:middle; }
+
+    .filter-buttons {
+      top: 12px;
+      right: 12px;
+      z-index: 1000;
+      width: 180px;
+    }
+
+    .filter-buttons button {
+      display: block;
+      margin: 6px 0;
+      padding: 8px 10px;
+      width: 100%;
+      cursor: pointer;
+      background-color: #777;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+
+    .filter-buttons button.active { background-color: #2ecc71; }
+
+    .filter-buttons hr { margin: 8px 0; border: 0; border-top: 1px solid #ddd; }
+
+    /* popup styling small tweak */
+    .leaflet-popup-content { font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="filter-buttons">
+    <!-- Rundering toggles (0 = indvendig, 1 = udvendig, 2 = begge) -->
+    <button onclick="toggleRundering(0, this)">Indvendige</button>
+    <button onclick="toggleRundering(1, this)">Udvendige</button>
+    <button onclick="toggleRundering(2, this)">Begge</button>
+    <hr>
+    <!-- Sektioner -->
+    <button onclick="toggleVagtSection('v9', this)">9-vagt</button>
+    <button onclick="toggleVagtSection('v10', this)">10-vagt</button>
+    <button onclick="toggleVagtSection('v11', this)">11-vagt</button>
+    <hr>
+    <button onclick="showAllMarkers()">Vis alle</button>
+  </div>
+
+  <div class="legend">
+    <div><span style="background: blue"></span> 9-vagt (Indvendig)</div>
+    <div><span style="background: deepskyblue"></span> 9-vagt (Udvendig)</div>
+    <div><span style="background: dodgerblue"></span> 9-vagt (Begge)</div>
+
+    <div><span style="background: red"></span> 10-vagt (Indvendig)</div>
+    <div><span style="background: crimson"></span> 10-vagt (Udvendig)</div>
+    <div><span style="background: orangered"></span> 10-vagt (Begge)</div>
+
+    <div><span style="background: green"></span> 11-vagt (Indvendig)</div>
+    <div><span style="background: forestgreen"></span> 11-vagt (Udvendig)</div>
+    <div><span style="background: limegreen"></span> 11-vagt (Begge)</div>
+  </div>
+
+  <script>
+    // ==================== Kort setup ====================
+    const map = L.map('map', {
+      minZoom: 11,
+      maxZoom: 17,
+      maxBounds: [
+        [55.55, 12.30],
+        [55.78, 12.75]
+      ],
+      maxBoundsViscosity: 1.0
+    }).setView([55.68, 12.57], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // ==================== Farver per vagt ====================
+    const runderingFarver = {
+      "v9": {0: "blue", 1: "deepskyblue", 2: "dodgerblue"},
+      "v10": {0: "red", 1: "crimson", 2: "orangered"},
+      "v11": {0: "green", 1: "forestgreen", 2: "limegreen"}
+    };
+
+    // ==================== JSON-data for 9/10/11 vagt ====================
+    // KOORDINATER = PLACEHOLDERS -> udskift med dine rigtige koordinater (lat, lng)
+    const vagterData = {
+	  "v9": [
+		{
+		  "adresse": "Tivoli siden",
+		  "koordinater": [55.67497292650145, 12.571349195828784],
+		  "tid": "",
+		  "rundering": [2,0],
+		  "bemærkning": "Top til bund"
+		},
+		{
+		  "adresse": "Prinsessegade 74-80",
+		  "koordinater": [55.67559865025522, 12.600400760838724],
+		  "tid": "22:00 – 04:00",
+		  "rundering": [1,0],
+		  "bemærkning": "Rundering af ydre arealer (1. april – 30. september)"
+		},
+		{
+		  "adresse": "Mimersgade 39-41",
+		  "koordinater": [55.69859730379575, 12.548710252128327],
+		  "tid": "23:00 – 01:00",
+		  "rundering": [0,0],
+		  "bemærkning": "Indvendig rundering. Husk tilkoble alarmen Mimersgade 47"
+		},
+		{
+		  "adresse": "Kettegårds Allé 69",
+		  "koordinater": [55.646190967345284, 12.463575713322166],
+		  "tid": "23:00 – 07:00",
+		  "rundering": [1,0],
+		  "bemærkning": "Yderdør"
+		},
+		{
+		  "adresse": "Lygten 4D",
+		  "koordinater": [55.70519140198077, 12.539073715808025],
+		  "tid": "23:00 – 01:00",
+		  "rundering": [0,0],
+		  "bemærkning": "Indvendig rundering, den aflange bygning"
+		}
+	  ],
+
+	  "v10": [
+		{
+		  "adresse": "Helsingborggade 16",
+		  "koordinater": [55.71520611939022, 12.570692866392736],
+		  "tid": "23:00 – 04:00",
+		  "rundering": [1,0],
+		  "bemærkning": "Udvendig rundering (man, ons, fre og søn). Indvendig tirs, tors og lør."
+		},
+		{
+		  "adresse": "Randersgade 60",
+		  "koordinater": [55.70752838871041, 12.580279237513857],
+		  "tid": "23:00 – 01:00",
+		  "rundering": [0,0],
+		  "bemærkning": "Indvendig rundering"
+		},
+		{
+		  "adresse": "Frederiksborgvej 77 (indvendig)",
+		  "koordinater": [55.708146138877986, 12.5317576485766],
+		  "tid": "23:00",
+		  "rundering": [0,0],
+		  "bemærkning": "Indvendig rundering"
+		},
+		{
+		  "adresse": "Østbanegade 119",
+		  "koordinater": [55.704900535273566, 12.590615786064374],
+		  "tid": "00:00 – 03:00",
+		  "rundering": [0,0],
+		  "bemærkning": ""
+		},
+		{
+		  "adresse": "Hans Knudsens Plads 3",
+		  "koordinater": [55.714462510897434, 12.561395013508053],
+		  "tid": "00:00 – 03:00",
+		  "rundering": [1,0],
+		  "bemærkning": "Yderdør — KUN FREDAG"
+		},
+		{
+		  "adresse": "Emdrupvej 72",
+		  "koordinater": [55.722992450436315, 12.54201297950504],
+		  "tid": "00:00 – 03:00",
+		  "rundering": [1,0],
+		  "bemærkning": "Yderdør"
+		},
+		{
+		  "adresse": "Frederiksgård skole",
+		  "koordinater": [55.69622361570898, 12.538780784244969],
+		  "tid": "01:00 – 03:00",
+		  "rundering": [0,0],
+		  "bemærkning": "KUN FREDAG (2. tur)"
+		},
+		{
+		  "adresse": "Indertoften 10",
+		  "koordinater": [55.686622880422405, 12.489211912573444],
+		  "tid": "02:00 – 04:30",
+		  "rundering": [1,0],
+		  "bemærkning": "Yderdør"
+		},
+		{
+		  "adresse": "Frederiksborgvej 77 (yderdør)",
+		  "koordinater": [55.708246138877986, 12.5318576485766],
+		  "tid": "02:00 – 06:00",
+		  "rundering": [1,0],
+		  "bemærkning": "Yderdør"
+		},
+		{
+		  "adresse": "Amager Strandvej 3",
+		  "koordinater": [55.669891575291665, 12.626963972265232],
+		  "tid": "Når det passer / 01:00-03:00",
+		  "rundering": [0,0],
+		  "bemærkning": "Indvendigt tilsyn / Udv tryghedstilsyn (se noter)"
+		},
+		{
+		  "adresse": "Nyrnberggade 23",
+		  "koordinater": [55.665373945521125, 12.61895522138991],
+		  "tid": "Når det passer",
+		  "rundering": [0,0],
+		  "bemærkning": "Indvendigt tilsyn"
+		},
+		{
+		  "adresse": "Herbergvejen 8",
+		  "koordinater": [55.6989297149698, 12.50534077453909],
+		  "tid": "Når det passer",
+		  "rundering": [0,0],
+		  "bemærkning": "Indvendigt tilsyn"
+		},
+		{
+		  "adresse": "Gl. Vasbygade 49",
+		  "koordinater": [55.654487733529166, 12.540543274155144],
+		  "tid": "Når det passer",
+		  "rundering": [0,0],
+		  "bemærkning": "Indvendigt tilsyn"
+		},
+		{
+		  "adresse": "Amagerstrandvej 3 (udv tryghedstilsyn)",
+		  "koordinater": [55.669464928321784, 12.62772025143932],
+		  "tid": "01:00 – 03:00",
+		  "rundering": [1,0],
+		  "bemærkning": "Udv tryghedstilsyn"
+		},
+		{
+		  "adresse": "Baldersgade 24",
+		  "koordinater": [55.699682675562514, 12.545551556127048],
+		  "tid": "05:00",
+		  "rundering": [1,0],
+		  "bemærkning": "Yderdør"
+		}
+	  ],
+
+	  "v11": [
+		{
+		  "adresse": "Portner",
+		  "koordinater": [55.67502213992866, 12.570970726101844],
+		  "tid": "23:00 – 07:15",
+		  "rundering": [0,0],
+		  "bemærkning": "Ved meget regn tjekkes loft og bund"
+		},
+		{
+		  "adresse": "Rådhuset + Stormgade 20",
+		  "koordinater": [55.674627164729955, 12.570904390531737],
+		  "tid": "23:00",
+		  "rundering": [0,0],
+		  "bemærkning": "Nøgleboks i trappeskakt ved hovedporten. Port og låge i gyden lukkes i Stormgade 20"
+		},
+		{
+		  "adresse": "Parterre",
+		  "koordinater": [55.67459479959544, 12.572191030484584],
+		  "tid": "00:00",
+		  "rundering": [0,0],
+		  "bemærkning": "Oplade elcyklernes batterier"
+		},
+		{
+		  "adresse": "Vester Voldgade siden",
+		  "koordinater": [55.675262342926054, 12.571359983861322],
+		  "tid": "",
+		  "rundering": [2,0],
+		  "bemærkning": "Top til bund"
+		},
+		{
+		  "adresse": "Rådhuset Yderdør + VV82 / Stormgade 20",
+		  "koordinater": [55.67510613720165, 12.571306283504319],
+		  "tid": "02:30",
+		  "rundering": [1,0],
+		  "bemærkning": "Slukke og lukke hvis der har været OA i VV82. Port og låge i gyden til Stormgade 20. Nøgleboks i trappeskakt ved hovedporten."
+		},
+		{
+		  "adresse": "Stormgade 18",
+		  "koordinater": [55.67440520941629, 12.57250579081794],
+		  "tid": "04:30 (lørdag morgen kl. 05:30)",
+		  "rundering": [0,0],
+		  "bemærkning": "Frakoble alarmen, tænd udstillingen og åbne porten mod Stormgade. (Undtagen d. 24-25 dec og d. 01. jan)"
+		},
+		{
+		  "adresse": "Stormgade 20 / VV. 82 (man - fredag)",
+		  "koordinater": [55.673962594269934, 12.5723711356852],
+		  "tid": "04:30 (man-fre)",
+		  "rundering": [0,0],
+		  "bemærkning": "Åbne Stormgade 20: Stuen, 3., 4- og 5-sal. Låse alle døre mod opgangen op og frakoble alarmer på alle etager. Åbne ud til VV. 82. (Undtagen lørdag morgen samt d. 24-25 dec og d. 01. jan)"
+		},
+		{
+		  "adresse": "Stormgade 20 / VV. 82 (lørdag morgen)",
+		  "koordinater": [55.67469479959544, 12.572291030484584],
+		  "tid": "05:30 (lørdag)",
+		  "rundering": [0,0],
+		  "bemærkning": "De to første døre i opgangen på stueetagen åbnes (postkasse-opgange). Hjørnedøren i krydset udenfor låses op (kun nederste lås i yderdør). Alarmen i stuen frakobles."
+		},
+		{
+		  "adresse": "Rådhuset Yderdør + VV82 / Stormgade 20 (morgenvagt)",
+		  "koordinater": [55.675790466403545, 12.569588133621334],
+		  "tid": "04:50",
+		  "rundering": [0,0],
+		  "bemærkning": "Nøgleboks i trappeskakt ved hovedporten. Åbne gitterporte foran Due- og Kyllingedør (ikke Kyllingedør i weekend). Åbne port og låge i gyden ved Stormgade 20."
+		}
+	  ]
+	};
+
+
+
+    // ==================== Opret markers ====================
+    const bounds = L.latLngBounds();
+    const markers = []; // alle markers samlet
+    const vMarkers = { "v9": [], "v10": [], "v11": [] };
+
+    for (const [vagt, locations] of Object.entries(vagterData)) {
+      locations.forEach(loc => {
+        // rundering: take first element (consistent with your prior structure)
+        const runderingType = Number(loc.rundering[0]) || 0; // 0=indvendig,1=udvendig,2=begge
+        const markerColor = runderingFarver[vagt][runderingType] || "black";
+
+        const popupContent = `
+          <div style="font-weight:700">${vagt.toUpperCase()}</div>
+          <div style="margin-top:6px"><strong>Adresse:</strong> ${loc.adresse}</div>
+          <div><strong>Tid:</strong> ${loc.tid || '-'}</div>
+          <div><strong>Rundering:</strong> ${runderingType === 0 ? 'Indvendig' : runderingType === 1 ? 'Udvendig' : 'Begge'}</div>
+          <div><strong>Bemærkning:</strong> ${loc.bemærkning || '-'}</div>
+        `;
+
+        const marker = L.circleMarker(loc.koordinater, {
+          color: markerColor,
+          radius: 7,
+          fillOpacity: 0.9,
+          rundering: runderingType,
+          vagt: vagt,
+          visible: true
+        }).addTo(map);
+
+        marker.bindPopup(popupContent);
+        marker.on('mouseover', function(){ this.openPopup(); });
+        marker.on('mouseout', function(){ this.closePopup(); });
+
+        markers.push(marker);
+        vMarkers[vagt].push(marker);
+        bounds.extend(loc.koordinater);
+      });
+    }
+
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [30,30] });
+
+    // ==================== Toggle funktioner ====================
+    let activeRundering = null;
+    let activeVagtSection = null;
+
+    function showAllMarkers() {
+      markers.forEach(m => {
+        if (!m.options.visible) {
+          m.addTo(map);
+          m.options.visible = true;
+        }
+      });
+      activeRundering = null;
+      activeVagtSection = null;
+      document.querySelectorAll('.filter-buttons button').forEach(b => b.classList.remove('active'));
+    }
+
+    function toggleRundering(type, btn) {
+      // type: 0,1,2
+      if (activeRundering === type) { showAllMarkers(); return; }
+
+      // clear active toggle styles for rundering buttons
+      document.querySelectorAll('.filter-buttons button').forEach(b => {
+        if (b.onclick && b.onclick.toString().includes("toggleRundering")) b.classList.remove('active');
+      });
+
+      // hide all
+      markers.forEach(m => { m.remove(); m.options.visible = false; });
+
+      // show matching rundering type only
+      markers.forEach(m => {
+        if (m.options.rundering === type) {
+          m.addTo(map);
+          m.options.visible = true;
+        }
+      });
+
+      btn.classList.add('active');
+      activeRundering = type;
+      activeVagtSection = null;
+    }
+
+    function toggleVagtSection(section, btn) {
+      if (activeVagtSection === section) { showAllMarkers(); return; }
+
+      // clear active for section buttons
+      document.querySelectorAll('.filter-buttons button').forEach(b => {
+        if (b.onclick && b.onclick.toString().includes("toggleVagtSection")) b.classList.remove('active');
+      });
+
+      // hide all markers from all sections
+      Object.values(vMarkers).flat().forEach(m => { m.remove(); m.options.visible = false; });
+
+      // show only selected section markers
+      (vMarkers[section] || []).forEach(m => { m.addTo(map); m.options.visible = true; });
+
+      btn.classList.add('active');
+      activeVagtSection = section;
+      activeRundering = null;
+    }
+
+    // expose functions for buttons in html
+    window.toggleRundering = toggleRundering;
+    window.toggleVagtSection = toggleVagtSection;
+    window.showAllMarkers = showAllMarkers;
+
+    // =========== NOTE ===========
+    // Koordinater er placeholders. Udskift i `vagterData` med rigtige koordinater (lat, lng) hvis du har dem.
+  </script>
+</body>
+</html>
