@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <title>6/7/8-Vagt | København</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+
+    .legend, .filter-buttons {
+      position: absolute;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.25);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .legend { bottom: 12px; left: 12px; z-index: 1001; max-width: 240px; }
+    .legend div { margin-bottom: 6px; }
+    .legend span { display:inline-block; width:12px; height:12px; margin-right:8px; border-radius:50%; vertical-align:middle; }
+
+    .filter-buttons {
+      top: 12px;
+      right: 12px;
+      z-index: 1000;
+      width: 150px;
+    }
+
+    .filter-buttons button {
+      display: block;
+      margin: 6px 0;
+      padding: 8px 10px;
+      width: 100%;
+      cursor: pointer;
+      background-color: #777;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+
+    .filter-buttons button.active { background-color: #2ecc71; }
+
+    .filter-buttons hr { margin: 8px 0; border: 0; border-top: 1px solid #ddd; }
+
+    /* popup styling small tweak */
+    .leaflet-popup-content { font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="filter-buttons">
+    <!-- Rundering toggles (0 = indvendig, 1 = udvendig, 2 = begge) -->
+    <button onclick="toggleRundering(0, this)">Indvendige</button>
+    <button onclick="toggleRundering(1, this)">Udvendige</button>
+    <button onclick="toggleRundering(2, this)">Begge</button>
+    <hr>
+    <!-- Sektioner -->
+    <button onclick="toggleVagtSection('v6', this)">6-vagt</button>
+    <button onclick="toggleVagtSection('v7', this)">7-vagt</button>
+    <button onclick="toggleVagtSection('v8', this)">8-vagt</button>
+    <hr>
+    <button onclick="showAllMarkers()">Vis alle</button>
+  </div>
+
+  <div class="legend">
+    <div><span style="background: blue"></span> 6-vagt (Indvendig)</div>
+    <div><span style="background: deepskyblue"></span> 6-vagt (Udvendig)</div>
+    <div><span style="background: dodgerblue"></span> 6-vagt (Begge)</div>
+
+    <div><span style="background: red"></span> 7-vagt (Indvendig)</div>
+    <div><span style="background: crimson"></span> 7-vagt (Udvendig)</div>
+    <div><span style="background: orangered"></span> 7-vagt (Begge)</div>
+
+    <div><span style="background: green"></span> 8-vagt (Indvendig)</div>
+    <div><span style="background: forestgreen"></span> 8-vagt (Udvendig)</div>
+    <div><span style="background: limegreen"></span> 8-vagt (Begge)</div>
+  </div>
+
+  <script>
+    // ==================== Kort setup ====================
+    const map = L.map('map', {
+      minZoom: 11,
+      maxZoom: 17,
+      maxBounds: [
+        [55.55, 12.30],
+        [55.78, 12.75]
+      ],
+      maxBoundsViscosity: 1.0
+    }).setView([55.68, 12.57], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // ==================== Farver per vagt ====================
+    const runderingFarver = {
+      "v6": {0: "blue", 1: "deepskyblue", 2: "dodgerblue"},
+      "v7": {0: "red", 1: "crimson", 2: "orangered"},
+      "v8": {0: "green", 1: "forestgreen", 2: "limegreen"}
+    };
+
+    // ==================== JSON-data for 6/7/8 vagt ====================
+    // OBS: koordinater er sat som placeholders [55.68, 12.57] - indsæt dine rigtige koordinater hvor du har dem.
+    const vagterData = {
+      "v6": [
+        {
+          "adresse": "Rådhuset - VV siden",
+          "koordinater": [55.67552430895774, 12.570727445002607],
+          "tid": "16:30",
+          "rundering": [1,0],
+          "bemærkning": "Loft og bund lukkes. Der skal låses til platformen i tårnet. (Springvand og lys tændes ved arrangement)"
+        },
+        {
+          "adresse": "Rådhuset - gitter / nøgleboks ved hovedport",
+          "koordinater": [55.67493303433967, 12.57084834388635],
+          "tid": "18:00",
+          "rundering": [1,0],
+          "bemærkning": "Låse døre/gitterporte. Nøgleboks i trappeskakt ved hovedport."
+        },
+        {
+          "adresse": "HNG",
+          "koordinater": [55.67925295873096,12.562621536687619],
+          "tid": "19:00",
+          "rundering": [0,0],
+          "bemærkning": "Indvendig rundering. Opstart tidligst kl. 19:00 pga. Borgerservice dokument boks. Alarm tilkobler automatisk kl. 20:00."
+        },
+        {
+          "adresse": "Vestervoldgade siden",
+          "koordinater": [55.67538560903739, 12.57104538785131],
+          "tid": "Ca. 20:30",
+          "rundering": [1,0],
+          "bemærkning": "Lukke rundering. Toiletter skal låses af i parter."
+        }
+      ],
+      "v7": [
+        {
+          "adresse": "Portner",
+          "koordinater": [55.67502213992866,12.570970726101844],
+          "tid": "15:15–23:15",
+          "rundering": [0,0],
+          "bemærkning": "Portner - almindelige portopgaver."
+        },
+        {
+          "adresse": "Stormgade 20",
+          "koordinater": [55.673862594269934,12.5722711356852],
+          "tid": "21:00–22:00",
+          "rundering": [0,0],
+          "bemærkning": "Husk port og låge i gyden. Stuen, 3., 4., 5. sal. Alarmer tilkobles på hver etage hvis personale er til stede."
+        },
+        {
+          "adresse": "VV 82 - 1. og 2. sal",
+          "koordinater": [55.674518833657906, 12.572351929845539],
+          "tid": "21:00–22:00",
+          "rundering": [0,0],
+          "bemærkning": "Indvendig rundering"
+        }
+      ],
+      "v8": [
+        {
+          "adresse": "Rådhuset - Tivoli siden",
+          "koordinater": [55.6748449984752, 12.570226470330125],
+          "tid": "16:30",
+          "rundering": [1,0],
+          "bemærkning": "Loft og bund lukkes."
+        },
+        {
+          "adresse": "Vestervoldgade 82",
+          "koordinater": [55.67459479959544,12.572191030484584],
+          "tid": "18:00",
+          "rundering": [1,0],
+          "bemærkning": "Yderdør (VV 82) - port lukkes."
+        },
+        {
+          "adresse": "Bernstorffsgade 15-17",
+          "koordinater": [55.67133434592488,12.568544366161564],
+          "tid": "19:00",
+          "rundering": [0,0],
+          "bemærkning": "Indvendig rundering. (Fredag: porten lukkes når vi ankommer. Alarm tilkobles - hverdag tidligst kl. 19:45 / fredag kl. 18:45)"
+        },
+        {
+          "adresse": "Tivoli siden",
+          "koordinater": [55.6748933186021, 12.570169302001155],
+          "tid": "Ca. 20:30",
+          "rundering": [1,0],
+          "bemærkning": "Lukke rundering"
+        }
+      ]
+    };
+
+    // ==================== Opret markers ====================
+    const bounds = L.latLngBounds();
+    const markers = []; // alle markers samlet
+    const vMarkers = { "v6": [], "v7": [], "v8": [] };
+
+    // Helper: convert human tid strings to simple canonical matching for section grouping
+    // (we'll rely on section buttons, so no heavy parsing needed here)
+    for (const [vagt, locations] of Object.entries(vagterData)) {
+      locations.forEach(loc => {
+        const runderingType = Number(loc.rundering[0]) || 0; // 0=indvendig,1=udvendig,2=begge
+        const markerColor = runderingFarver[vagt][runderingType] || "black";
+
+        const popupContent = `
+          <div style="font-weight:700">${vagt.toUpperCase()}</div>
+          <div style="margin-top:6px"><strong>Adresse:</strong> ${loc.adresse}</div>
+          <div><strong>Tid:</strong> ${loc.tid || '-'}</div>
+          <div><strong>Rundering:</strong> ${runderingType === 0 ? 'Indvendig' : runderingType === 1 ? 'Udvendig' : 'Begge'}</div>
+          <div><strong>Bemærkning:</strong> ${loc.bemærkning || '-'}</div>
+        `;
+
+        const marker = L.circleMarker(loc.koordinater, {
+          color: markerColor,
+          radius: 7,
+          fillOpacity: 0.9,
+          rundering: runderingType,
+          vagt: vagt,
+          visible: true
+        }).addTo(map);
+
+        marker.bindPopup(popupContent);
+        marker.on('mouseover', function(){ this.openPopup(); });
+        marker.on('mouseout', function(){ this.closePopup(); });
+
+        markers.push(marker);
+        vMarkers[vagt].push(marker);
+        bounds.extend(loc.koordinater);
+      });
+    }
+
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [30,30] });
+
+    // ==================== Toggle funktioner ====================
+    let activeRundering = null;
+    let activeVagtSection = null;
+
+    function showAllMarkers() {
+      markers.forEach(m => {
+        if (!m.options.visible) {
+          m.addTo(map);
+          m.options.visible = true;
+        }
+      });
+      activeRundering = null;
+      activeVagtSection = null;
+      document.querySelectorAll('.filter-buttons button').forEach(b => b.classList.remove('active'));
+    }
+
+    function toggleRundering(type, btn) {
+      // type: 0,1,2
+      if (activeRundering === type) { showAllMarkers(); return; }
+
+      // clear active toggle styles for rundering buttons
+      document.querySelectorAll('.filter-buttons button').forEach(b => {
+        if (b.onclick && b.onclick.toString().includes("toggleRundering")) b.classList.remove('active');
+      });
+
+      // hide all
+      markers.forEach(m => { m.remove(); m.options.visible = false; });
+
+      // show matching rundering type only
+      markers.forEach(m => {
+        if (m.options.rundering === type) {
+          m.addTo(map);
+          m.options.visible = true;
+        }
+      });
+
+      btn.classList.add('active');
+      activeRundering = type;
+      activeVagtSection = null;
+    }
+
+    function toggleVagtSection(section, btn) {
+      if (activeVagtSection === section) { showAllMarkers(); return; }
+
+      // clear active for section buttons
+      document.querySelectorAll('.filter-buttons button').forEach(b => {
+        if (b.onclick && b.onclick.toString().includes("toggleVagtSection")) b.classList.remove('active');
+      });
+
+      // hide all markers from all sections
+      Object.values(vMarkers).flat().forEach(m => { m.remove(); m.options.visible = false; });
+
+      // show only selected section markers
+      (vMarkers[section] || []).forEach(m => { m.addTo(map); m.options.visible = true; });
+
+      btn.classList.add('active');
+      activeVagtSection = section;
+      activeRundering = null;
+    }
+
+    // expose functions for buttons in html
+    window.toggleRundering = toggleRundering;
+    window.toggleVagtSection = toggleVagtSection;
+    window.showAllMarkers = showAllMarkers;
+
+    // =========== NOTE ===========
+    // Koordinater er placeholders. Udskift i `vagterData` med rigtige koordinater (lat, lng).
+    // Eksempel:
+    // "koordinater":[55.674972,12.571349]
+
+  </script>
+</body>
+</html>
